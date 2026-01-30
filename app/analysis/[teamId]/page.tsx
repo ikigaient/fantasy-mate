@@ -10,6 +10,7 @@ import { StrengthsWeaknesses } from '@/components/StrengthsWeaknesses';
 import { FixtureAnalysis } from '@/components/FixtureAnalysis';
 import { TransferSuggestions } from '@/components/TransferSuggestions';
 import { ChipStrategy } from '@/components/ChipStrategy';
+import { DifferentialsAnalysis } from '@/components/DifferentialsAnalysis';
 import {
   BootstrapData,
   EntryInfo,
@@ -26,7 +27,7 @@ import { analyzeTeam } from '@/lib/analysis';
 import { identifyTransferTargets } from '@/lib/transfers';
 import { analyzeChipStrategy } from '@/lib/chips';
 
-type TabType = 'overview' | 'squad' | 'fixtures' | 'transfers' | 'chips';
+type TabType = 'overview' | 'squad' | 'fixtures' | 'transfers' | 'differentials' | 'chips';
 
 export default function AnalysisPage() {
   const params = useParams();
@@ -193,6 +194,7 @@ export default function AnalysisPage() {
     { id: 'squad', label: 'Squad' },
     { id: 'fixtures', label: 'Fixtures' },
     { id: 'transfers', label: 'Transfers' },
+    { id: 'differentials', label: 'Differentials' },
     { id: 'chips', label: 'Chips' },
   ];
 
@@ -269,6 +271,18 @@ export default function AnalysisPage() {
 
           {activeTab === 'transfers' && (
             <TransferSuggestions suggestions={transferSuggestions} />
+          )}
+
+          {activeTab === 'differentials' && (
+            <DifferentialsAnalysis
+              starting={startingPlayers}
+              bench={benchPlayers}
+              allPlayers={bootstrap.elements}
+              teams={bootstrap.teams}
+              fixtures={fixtures}
+              currentGameweek={currentGameweek}
+              bank={picks?.entry_history.bank || 0}
+            />
           )}
 
           {activeTab === 'chips' && (
