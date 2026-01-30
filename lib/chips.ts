@@ -98,16 +98,22 @@ export function analyzeChipStrategy(
     seasonContext: wildcardSeasonContext,
   });
 
-  // 2. Free Hit Analysis
-  const freeHitUsage = chipHistory.find((c) => c.name === 'freehit');
-  const freeHitUsed = !!freeHitUsage;
-  const freeHitUsedGW = freeHitUsage?.event || null;
+  // 2. Free Hit Analysis (2 available per season - one per half)
+  const freeHitUsages = chipHistory.filter((c) => c.name === 'freehit');
+  const freeHitCount = freeHitUsages.length;
+  const freeHitAvailable = isSecondHalf ? freeHitCount < 2 : freeHitCount < 1;
+  const freeHitUsedGW = freeHitUsages.length > 0 ? freeHitUsages[freeHitUsages.length - 1].event : null;
   let freeHitReason = '';
   let freeHitPriority: 'high' | 'medium' | 'low' | 'none' = 'none';
   let freeHitGW: number | null = null;
-  let freeHitSeasonContext = freeHitUsed ? '' : `Available for GW${currentGameweek}-38`;
+  let freeHitSeasonContext = '';
 
-  if (!freeHitUsed) {
+  if (freeHitAvailable) {
+    const remainingFreeHits = isSecondHalf ? 2 - freeHitCount : 1 - freeHitCount;
+    freeHitSeasonContext = isSecondHalf
+      ? `${remainingFreeHits} Free Hit${remainingFreeHits > 1 ? 's' : ''} available for GW20-38.`
+      : `First half Free Hit available (expires GW19). Second available from GW20.`;
+
     // Check for blank gameweeks or extreme fixture swings
     const blankGWs = detectBlankGameweeks(upcomingGWs, fixtures, startingPlayers);
 
@@ -131,13 +137,15 @@ export function analyzeChipStrategy(
       }
     }
   } else {
-    freeHitReason = `Free Hit already used in GW${freeHitUsedGW}.`;
+    freeHitReason = isSecondHalf
+      ? 'Both Free Hits already used this season.'
+      : `First half Free Hit used in GW${freeHitUsedGW}. Second available from GW20.`;
   }
 
   recommendations.push({
     chip: 'freehit',
-    available: !freeHitUsed,
-    alreadyUsed: freeHitUsed,
+    available: freeHitAvailable,
+    alreadyUsed: !freeHitAvailable,
     usedInGameweek: freeHitUsedGW,
     recommendedGameweek: freeHitGW,
     reason: freeHitReason,
@@ -145,16 +153,22 @@ export function analyzeChipStrategy(
     seasonContext: freeHitSeasonContext,
   });
 
-  // 3. Bench Boost Analysis
-  const bbUsage = chipHistory.find((c) => c.name === 'bboost');
-  const benchBoostUsed = !!bbUsage;
-  const bbUsedGW = bbUsage?.event || null;
+  // 3. Bench Boost Analysis (2 available per season - one per half)
+  const bbUsages = chipHistory.filter((c) => c.name === 'bboost');
+  const bbCount = bbUsages.length;
+  const benchBoostAvailable = isSecondHalf ? bbCount < 2 : bbCount < 1;
+  const bbUsedGW = bbUsages.length > 0 ? bbUsages[bbUsages.length - 1].event : null;
   let bbReason = '';
   let bbPriority: 'high' | 'medium' | 'low' | 'none' = 'none';
   let bbGW: number | null = null;
-  let bbSeasonContext = benchBoostUsed ? '' : `Available for GW${currentGameweek}-38`;
+  let bbSeasonContext = '';
 
-  if (!benchBoostUsed) {
+  if (benchBoostAvailable) {
+    const remainingBB = isSecondHalf ? 2 - bbCount : 1 - bbCount;
+    bbSeasonContext = isSecondHalf
+      ? `${remainingBB} Bench Boost${remainingBB > 1 ? 's' : ''} available for GW20-38.`
+      : `First half Bench Boost available (expires GW19). Second available from GW20.`;
+
     // Check bench quality
     const benchAvgForm =
       benchPlayers.reduce((sum, p) => sum + parseFloat(p.form), 0) /
@@ -179,13 +193,15 @@ export function analyzeChipStrategy(
       bbPriority = 'low';
     }
   } else {
-    bbReason = `Bench Boost already used in GW${bbUsedGW}.`;
+    bbReason = isSecondHalf
+      ? 'Both Bench Boosts already used this season.'
+      : `First half Bench Boost used in GW${bbUsedGW}. Second available from GW20.`;
   }
 
   recommendations.push({
     chip: 'benchboost',
-    available: !benchBoostUsed,
-    alreadyUsed: benchBoostUsed,
+    available: benchBoostAvailable,
+    alreadyUsed: !benchBoostAvailable,
     usedInGameweek: bbUsedGW,
     recommendedGameweek: bbGW,
     reason: bbReason,
@@ -193,16 +209,22 @@ export function analyzeChipStrategy(
     seasonContext: bbSeasonContext,
   });
 
-  // 4. Triple Captain Analysis
-  const tcUsage = chipHistory.find((c) => c.name === '3xc');
-  const tcUsed = !!tcUsage;
-  const tcUsedGW = tcUsage?.event || null;
+  // 4. Triple Captain Analysis (2 available per season - one per half)
+  const tcUsages = chipHistory.filter((c) => c.name === '3xc');
+  const tcCount = tcUsages.length;
+  const tcAvailable = isSecondHalf ? tcCount < 2 : tcCount < 1;
+  const tcUsedGW = tcUsages.length > 0 ? tcUsages[tcUsages.length - 1].event : null;
   let tcReason = '';
   let tcPriority: 'high' | 'medium' | 'low' | 'none' = 'none';
   let tcGW: number | null = null;
-  let tcSeasonContext = tcUsed ? '' : `Available for GW${currentGameweek}-38`;
+  let tcSeasonContext = '';
 
-  if (!tcUsed) {
+  if (tcAvailable) {
+    const remainingTC = isSecondHalf ? 2 - tcCount : 1 - tcCount;
+    tcSeasonContext = isSecondHalf
+      ? `${remainingTC} Triple Captain${remainingTC > 1 ? 's' : ''} available for GW20-38.`
+      : `First half Triple Captain available (expires GW19). Second available from GW20.`;
+
     // Find best TC candidate
     const tcCandidate = findBestTCCandidate(startingPlayers, fixtures, currentGameweek);
 
@@ -229,13 +251,15 @@ export function analyzeChipStrategy(
       tcPriority = 'low';
     }
   } else {
-    tcReason = `Triple Captain already used in GW${tcUsedGW}.`;
+    tcReason = isSecondHalf
+      ? 'Both Triple Captains already used this season.'
+      : `First half Triple Captain used in GW${tcUsedGW}. Second available from GW20.`;
   }
 
   recommendations.push({
     chip: 'triplecaptain',
-    available: !tcUsed,
-    alreadyUsed: tcUsed,
+    available: tcAvailable,
+    alreadyUsed: !tcAvailable,
     usedInGameweek: tcUsedGW,
     recommendedGameweek: tcGW,
     reason: tcReason,
