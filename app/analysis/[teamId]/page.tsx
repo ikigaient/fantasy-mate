@@ -262,6 +262,8 @@ export default function AnalysisPage() {
               players={startingPlayers}
               gameweeks={bootstrap.events}
               currentGameweek={currentGameweek}
+              fixtures={fixtures}
+              teams={bootstrap.teams}
             />
           )}
 

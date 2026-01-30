@@ -25,7 +25,7 @@ export function ChipStrategy({ recommendations }: ChipStrategyProps) {
 }
 
 function ChipCard({ recommendation }: { recommendation: ChipRecommendation }) {
-  const { chip, available, alreadyUsed, recommendedGameweek, reason, priority } = recommendation;
+  const { chip, available, alreadyUsed, usedInGameweek, recommendedGameweek, reason, priority, seasonContext } = recommendation;
 
   const priorityColors = {
     high: 'border-green-600 bg-green-900/20',
@@ -64,7 +64,13 @@ function ChipCard({ recommendation }: { recommendation: ChipRecommendation }) {
           <div>
             <div className="font-medium text-white">{getChipDisplayName(chip)}</div>
             <div className="text-xs text-gray-400">
-              {alreadyUsed ? 'Used' : available ? 'Available' : 'Not Available'}
+              {alreadyUsed
+                ? usedInGameweek
+                  ? `Used in GW${usedInGameweek}`
+                  : 'Used'
+                : available
+                ? 'Available'
+                : 'Not Available'}
             </div>
           </div>
         </div>
@@ -83,6 +89,10 @@ function ChipCard({ recommendation }: { recommendation: ChipRecommendation }) {
       </div>
 
       <p className="text-sm text-gray-300">{reason}</p>
+
+      {seasonContext && !alreadyUsed && (
+        <p className="text-xs text-gray-500 mt-1">{seasonContext}</p>
+      )}
 
       {recommendedGameweek && !alreadyUsed && (
         <div className="mt-3 pt-3 border-t border-gray-700">

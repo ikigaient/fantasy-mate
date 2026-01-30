@@ -7,6 +7,37 @@ import {
   EntryHistory,
 } from './types';
 
+export function calculateTeamAverageFDR(
+  startingPlayers: PlayerWithDetails[],
+  gameweeksAhead: number = 3
+): number {
+  let totalDifficulty = 0;
+  let fixtureCount = 0;
+
+  for (const player of startingPlayers) {
+    const fixtures = player.upcomingFixtures.slice(0, gameweeksAhead);
+    for (const fixture of fixtures) {
+      totalDifficulty += fixture.difficulty;
+      fixtureCount++;
+    }
+  }
+
+  if (fixtureCount === 0) return 3; // Default to medium difficulty
+  return totalDifficulty / fixtureCount;
+}
+
+export function getFDRColor(fdr: number): string {
+  if (fdr < 2.5) return 'text-green-400';
+  if (fdr <= 3.5) return 'text-yellow-400';
+  return 'text-red-400';
+}
+
+export function getFDRBgColor(fdr: number): string {
+  if (fdr < 2.5) return 'bg-green-900/30';
+  if (fdr <= 3.5) return 'bg-yellow-900/30';
+  return 'bg-red-900/30';
+}
+
 export function analyzeTeam(
   startingPlayers: PlayerWithDetails[],
   benchPlayers: PlayerWithDetails[],
@@ -198,12 +229,16 @@ export function analyzeTeam(
   // Cap between 0 and 100
   overallRating = Math.max(0, Math.min(100, overallRating));
 
+  // Calculate average FDR for next 3 gameweeks
+  const averageFDR = calculateTeamAverageFDR(startingPlayers, 3);
+
   return {
     overallRating: Math.round(overallRating),
     teamValue: squadValue,
     squadValue: squadValue - bank,
     bank,
     averageForm: parseFloat(averageForm.toFixed(1)),
+    averageFDR: parseFloat(averageFDR.toFixed(2)),
     strengths,
     weaknesses,
   };

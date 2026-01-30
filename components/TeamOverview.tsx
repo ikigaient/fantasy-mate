@@ -1,7 +1,7 @@
 import { Card, CardContent } from './ui/Card';
 import { ProgressBar } from './ui/ProgressBar';
 import { AnalysisResult, EntryInfo } from '@/lib/types';
-import { getRatingGrade, getRatingColor } from '@/lib/analysis';
+import { getRatingGrade, getRatingColor, getFDRColor, getFDRBgColor } from '@/lib/analysis';
 import { formatPrice } from '@/lib/fpl-api';
 
 interface TeamOverviewProps {
@@ -54,7 +54,7 @@ export function TeamOverview({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6 pt-4 border-t border-gray-700">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-6 pt-4 border-t border-gray-700">
           <StatBox
             label="Squad Value"
             value={formatPrice(analysis.squadValue)}
@@ -65,6 +65,7 @@ export function TeamOverview({
             value={formatPrice(analysis.teamValue)}
           />
           <StatBox label="Avg Form" value={analysis.averageForm.toFixed(1)} />
+          <FDRStatBox fdr={analysis.averageFDR} />
         </div>
       </CardContent>
     </Card>
@@ -76,6 +77,20 @@ function StatBox({ label, value }: { label: string; value: string }) {
     <div className="text-center p-3 bg-gray-900 rounded-lg">
       <div className="text-lg font-semibold text-white">{value}</div>
       <div className="text-xs text-gray-400">{label}</div>
+    </div>
+  );
+}
+
+function FDRStatBox({ fdr }: { fdr: number }) {
+  const colorClass = getFDRColor(fdr);
+  const bgClass = getFDRBgColor(fdr);
+  const label = fdr < 2.5 ? 'Easy' : fdr <= 3.5 ? 'Moderate' : 'Tough';
+
+  return (
+    <div className={`text-center p-3 rounded-lg ${bgClass}`}>
+      <div className={`text-lg font-semibold ${colorClass}`}>{fdr.toFixed(2)}</div>
+      <div className="text-xs text-gray-400">Avg FDR (3GW)</div>
+      <div className={`text-[10px] ${colorClass}`}>{label} run</div>
     </div>
   );
 }

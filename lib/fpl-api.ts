@@ -9,6 +9,7 @@ import {
   Gameweek,
   PlayerWithDetails,
   FixtureWithDetails,
+  TeamPerformance,
   POSITION_NAMES,
 } from './types';
 
@@ -212,7 +213,7 @@ export function getStatusText(status: string, chance: number | null): string {
 }
 
 export function getDifficultyColor(difficulty: number): string {
-  switch (difficulty) {
+  switch (Math.round(difficulty)) {
     case 1:
       return 'bg-green-600';
     case 2:
@@ -226,4 +227,137 @@ export function getDifficultyColor(difficulty: number): string {
     default:
       return 'bg-gray-500';
   }
+}
+
+/**
+ * Calculate team performance from finished fixtures (GW1-current)
+ * Analyzes goals scored/conceded and home/away splits
+ */
+export function calculateTeamPerformance(
+  fixtures: Fixture[],
+  teams: Team[]
+): Map<number, TeamPerformance> {
+  const performanceMap = new Map<number, TeamPerformance>();
+
+  // Initialize performance data for all teams
+  for (const team of teams) {
+    performanceMap.set(team.id, {
+      teamId: team.id,
+      goalsScored: 0,
+      goalsConceded: 0,
+      homeGoalsScored: 0,
+      homeGoalsConceded: 0,
+      awayGoalsScored: 0,
+      awayGoalsConceded: 0,
+      matchesPlayed: 0,
+      homeMatches: 0,
+      awayMatches: 0,
+      expectedPerformance: 0,
+      actualPerformance: 0,
+      performanceDelta: 0,
+    });
+  }
+
+  // Process finished fixtures
+  const finishedFixtures = fixtures.filter(
+    (f) => f.finished && f.team_h_score !== null && f.team_a_score !== null
+  );
+
+  for (const fixture of finishedFixtures) {
+    const homePerf = performanceMap.get(fixture.team_h);
+    const awayPerf = performanceMap.get(fixture.team_a);
+
+    if (homePerf && awayPerf) {
+      const homeGoals = fixture.team_h_score || 0;
+      const awayGoals = fixture.team_a_score || 0;
+
+      // Update home team stats
+      homePerf.goalsScored += homeGoals;
+      homePerf.goalsConceded += awayGoals;
+      homePerf.homeGoalsScored += homeGoals;
+      homePerf.homeGoalsConceded += awayGoals;
+      homePerf.matchesPlayed++;
+      homePerf.homeMatches++;
+
+      // Calculate expected performance based on FDR
+      // Lower FDR = easier opponent = expected more goals
+      const expectedHomeGoals = (5 - fixture.team_h_difficulty) * 0.6 + 0.8;
+      const expectedHomeConceded = fixture.team_h_difficulty * 0.4;
+      homePerf.expectedPerformance += expectedHomeGoals - expectedHomeConceded;
+      homePerf.actualPerformance += homeGoals - awayGoals;
+
+      // Update away team stats
+      awayPerf.goalsScored += awayGoals;
+      awayPerf.goalsConceded += homeGoals;
+      awayPerf.awayGoalsScored += awayGoals;
+      awayPerf.awayGoalsConceded += homeGoals;
+      awayPerf.matchesPlayed++;
+      awayPerf.awayMatches++;
+
+      const expectedAwayGoals = (5 - fixture.team_a_difficulty) * 0.5 + 0.6;
+      const expectedAwayConceded = fixture.team_a_difficulty * 0.45;
+      awayPerf.expectedPerformance += expectedAwayGoals - expectedAwayConceded;
+      awayPerf.actualPerformance += awayGoals - homeGoals;
+    }
+  }
+
+  // Calculate performance deltas
+  for (const [, perf] of performanceMap) {
+    if (perf.matchesPlayed > 0) {
+      perf.performanceDelta =
+        (perf.actualPerformance - perf.expectedPerformance) / perf.matchesPlayed;
+    }
+  }
+
+  return performanceMap;
+}
+
+/**
+ * Calculate adjusted FDR based on actual team performance
+ * Teams outperforming expectations = harder rating
+ * Teams underperforming = easier rating
+ * Formula: adjustedFDR = baseFDR + (performanceDelta * 0.5)
+ * Capped between 1-5
+ */
+export function calculateAdjustedFDR(
+  baseFDR: number,
+  opponentPerformance: TeamPerformance | undefined
+): number {
+  if (!opponentPerformance || opponentPerformance.matchesPlayed < 3) {
+    return baseFDR; // Not enough data, use base FDR
+  }
+
+  // Positive delta means team is outperforming (harder to play against)
+  // Negative delta means team is underperforming (easier to play against)
+  const adjustment = opponentPerformance.performanceDelta * 0.5;
+  const adjustedFDR = baseFDR + adjustment;
+
+  // Cap between 1 and 5
+  return Math.max(1, Math.min(5, adjustedFDR));
+}
+
+/**
+ * Get the difference indicator between adjusted and base FDR
+ */
+export function getFDRDifferenceIndicator(
+  baseFDR: number,
+  adjustedFDR: number
+): { indicator: string; color: string } | null {
+  const diff = adjustedFDR - baseFDR;
+
+  if (Math.abs(diff) < 0.3) {
+    return null; // No significant difference
+  }
+
+  if (diff > 0.5) {
+    return { indicator: '↑↑', color: 'text-red-400' }; // Much harder
+  } else if (diff > 0.3) {
+    return { indicator: '↑', color: 'text-orange-400' }; // Harder
+  } else if (diff < -0.5) {
+    return { indicator: '↓↓', color: 'text-green-400' }; // Much easier
+  } else if (diff < -0.3) {
+    return { indicator: '↓', color: 'text-green-300' }; // Easier
+  }
+
+  return null;
 }

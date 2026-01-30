@@ -166,6 +166,23 @@ export interface FixtureWithDetails extends Fixture {
   opponent: Team;
   isHome: boolean;
   difficulty: number;
+  adjustedDifficulty?: number;
+}
+
+export interface TeamPerformance {
+  teamId: number;
+  goalsScored: number;
+  goalsConceded: number;
+  homeGoalsScored: number;
+  homeGoalsConceded: number;
+  awayGoalsScored: number;
+  awayGoalsConceded: number;
+  matchesPlayed: number;
+  homeMatches: number;
+  awayMatches: number;
+  expectedPerformance: number;
+  actualPerformance: number;
+  performanceDelta: number;
 }
 
 export interface AnalysisResult {
@@ -174,6 +191,7 @@ export interface AnalysisResult {
   squadValue: number;
   bank: number;
   averageForm: number;
+  averageFDR: number;
   strengths: Strength[];
   weaknesses: Weakness[];
 }
@@ -193,6 +211,8 @@ export interface Weakness {
   players?: PlayerWithDetails[];
 }
 
+export type TransferCategory = 'form_pick' | 'fixture_swing' | 'differential' | 'premium_upgrade' | 'value_pick';
+
 export interface TransferSuggestion {
   gameweek: number;
   playerOut: PlayerWithDetails;
@@ -200,6 +220,7 @@ export interface TransferSuggestion {
   suggestions: TransferOption[];
   takeHit: boolean;
   hitWorth: boolean;
+  category: TransferCategory;
 }
 
 export interface TransferOption {
@@ -209,15 +230,24 @@ export interface TransferOption {
   fixtureDifficulty: number;
   expectedPoints: number;
   reason: string;
+  category: TransferCategory;
+  confidence: number;
+  stats: {
+    ownership: number;
+    xGI: number;
+    ict: number;
+  };
 }
 
 export interface ChipRecommendation {
   chip: 'wildcard' | 'freehit' | 'benchboost' | 'triplecaptain';
   available: boolean;
   alreadyUsed: boolean;
+  usedInGameweek: number | null;
   recommendedGameweek: number | null;
   reason: string;
   priority: 'high' | 'medium' | 'low' | 'none';
+  seasonContext?: string;
 }
 
 export type PositionType = 'GKP' | 'DEF' | 'MID' | 'FWD';

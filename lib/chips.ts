@@ -16,8 +16,19 @@ export function analyzeChipStrategy(
   history: EntryHistory,
   currentGameweek: number
 ): ChipRecommendation[] {
-  const usedChips = history.chips.map((c) => c.name);
+  // Defensive null checks for history.chips
+  const usedChips = history?.chips?.map((c) => c.name) || [];
+  const chipHistory = history?.chips || [];
   const recommendations: ChipRecommendation[] = [];
+
+  // Season context - determine if we're in second half
+  const isSecondHalf = currentGameweek >= 20;
+  const gameweeksRemaining = 38 - currentGameweek;
+
+  // Debug logging
+  console.log('[Chip Strategy] Current GW:', currentGameweek);
+  console.log('[Chip Strategy] Chips from history:', chipHistory);
+  console.log('[Chip Strategy] Used chip names:', usedChips);
 
   // Analyze next 6 gameweeks
   const upcomingGWs = gameweeks
@@ -25,12 +36,16 @@ export function analyzeChipStrategy(
     .sort((a, b) => a.id - b.id);
 
   // 1. Wildcard Analysis
-  const wildcardCount = usedChips.filter((c) => c === 'wildcard').length;
-  const wildcardAvailable = wildcardCount < 2;
+  const wildcardUsages = chipHistory.filter((c) => c.name === 'wildcard');
+  const wildcardCount = wildcardUsages.length;
+  // In second half, user gets a new wildcard regardless of first half usage
+  const wildcardAvailable = isSecondHalf ? wildcardCount < 2 : wildcardCount < 1;
+  const wildcardUsedGW = wildcardUsages.length > 0 ? wildcardUsages[wildcardUsages.length - 1].event : null;
 
   let wildcardReason = '';
   let wildcardPriority: 'high' | 'medium' | 'low' | 'none' = 'none';
   let wildcardGW: number | null = null;
+  let wildcardSeasonContext = '';
 
   if (wildcardAvailable) {
     // Check if team needs significant restructuring
@@ -41,6 +56,15 @@ export function analyzeChipStrategy(
       (p) => p.status !== 'a'
     ).length;
 
+    // Season context affects urgency
+    if (isSecondHalf && gameweeksRemaining <= 10) {
+      wildcardSeasonContext = `${gameweeksRemaining} GWs remaining - consider using soon.`;
+    } else if (isSecondHalf) {
+      wildcardSeasonContext = 'Second half wildcard available for GW20-38.';
+    } else {
+      wildcardSeasonContext = 'First half wildcard expires after GW19.';
+    }
+
     if (poorFormCount >= 4 || injuryCount >= 3) {
       wildcardPriority = 'high';
       wildcardGW = currentGameweek;
@@ -49,28 +73,39 @@ export function analyzeChipStrategy(
       wildcardPriority = 'medium';
       wildcardGW = currentGameweek + 1;
       wildcardReason = 'Several underperforming players. May want to restructure soon.';
+    } else if (isSecondHalf && gameweeksRemaining <= 5) {
+      wildcardPriority = 'medium';
+      wildcardGW = currentGameweek;
+      wildcardReason = 'Only a few gameweeks left. Use it or lose it!';
     } else {
       wildcardReason = 'Team is performing adequately. Save for fixture swings or emergencies.';
       wildcardPriority = 'low';
     }
   } else {
-    wildcardReason = 'Both wildcards already used this season.';
+    wildcardReason = isSecondHalf
+      ? 'Both wildcards already used this season.'
+      : 'First half wildcard already used. Second available from GW20.';
   }
 
   recommendations.push({
     chip: 'wildcard',
     available: wildcardAvailable,
     alreadyUsed: !wildcardAvailable,
+    usedInGameweek: wildcardUsedGW,
     recommendedGameweek: wildcardGW,
     reason: wildcardReason,
     priority: wildcardPriority,
+    seasonContext: wildcardSeasonContext,
   });
 
   // 2. Free Hit Analysis
-  const freeHitUsed = usedChips.includes('freehit');
+  const freeHitUsage = chipHistory.find((c) => c.name === 'freehit');
+  const freeHitUsed = !!freeHitUsage;
+  const freeHitUsedGW = freeHitUsage?.event || null;
   let freeHitReason = '';
   let freeHitPriority: 'high' | 'medium' | 'low' | 'none' = 'none';
   let freeHitGW: number | null = null;
+  let freeHitSeasonContext = freeHitUsed ? '' : `Available for GW${currentGameweek}-38`;
 
   if (!freeHitUsed) {
     // Check for blank gameweeks or extreme fixture swings
@@ -87,35 +122,43 @@ export function analyzeChipStrategy(
         freeHitPriority = 'medium';
         freeHitGW = swingGW;
         freeHitReason = `GW${swingGW} has significant fixture difficulty. Consider Free Hit.`;
+      } else if (isSecondHalf && gameweeksRemaining <= 8) {
+        freeHitPriority = 'medium';
+        freeHitReason = `${gameweeksRemaining} GWs remaining. Look for upcoming DGW/BGW to maximize value.`;
       } else {
         freeHitReason = 'No immediate need. Save for blank gameweeks or emergency situations.';
         freeHitPriority = 'low';
       }
     }
   } else {
-    freeHitReason = 'Free Hit already used this season.';
+    freeHitReason = `Free Hit already used in GW${freeHitUsedGW}.`;
   }
 
   recommendations.push({
     chip: 'freehit',
     available: !freeHitUsed,
     alreadyUsed: freeHitUsed,
+    usedInGameweek: freeHitUsedGW,
     recommendedGameweek: freeHitGW,
     reason: freeHitReason,
     priority: freeHitPriority,
+    seasonContext: freeHitSeasonContext,
   });
 
   // 3. Bench Boost Analysis
-  const benchBoostUsed = usedChips.includes('bboost');
+  const bbUsage = chipHistory.find((c) => c.name === 'bboost');
+  const benchBoostUsed = !!bbUsage;
+  const bbUsedGW = bbUsage?.event || null;
   let bbReason = '';
   let bbPriority: 'high' | 'medium' | 'low' | 'none' = 'none';
   let bbGW: number | null = null;
+  let bbSeasonContext = benchBoostUsed ? '' : `Available for GW${currentGameweek}-38`;
 
   if (!benchBoostUsed) {
     // Check bench quality
     const benchAvgForm =
       benchPlayers.reduce((sum, p) => sum + parseFloat(p.form), 0) /
-      benchPlayers.length;
+      (benchPlayers.length || 1);
 
     // Check for double gameweeks
     const dgwGW = detectDoubleGameweek(upcomingGWs, fixtures, benchPlayers);
@@ -128,28 +171,36 @@ export function analyzeChipStrategy(
       bbPriority = 'medium';
       bbGW = currentGameweek;
       bbReason = `Strong bench with ${benchAvgForm.toFixed(1)} average form. Good opportunity.`;
+    } else if (isSecondHalf && gameweeksRemaining <= 8) {
+      bbPriority = 'medium';
+      bbReason = `${gameweeksRemaining} GWs remaining. Look for DGW to use with a strong bench.`;
     } else {
       bbReason = `Bench quality is low (${benchAvgForm.toFixed(1)} avg form). Improve bench before using.`;
       bbPriority = 'low';
     }
   } else {
-    bbReason = 'Bench Boost already used this season.';
+    bbReason = `Bench Boost already used in GW${bbUsedGW}.`;
   }
 
   recommendations.push({
     chip: 'benchboost',
     available: !benchBoostUsed,
     alreadyUsed: benchBoostUsed,
+    usedInGameweek: bbUsedGW,
     recommendedGameweek: bbGW,
     reason: bbReason,
     priority: bbPriority,
+    seasonContext: bbSeasonContext,
   });
 
   // 4. Triple Captain Analysis
-  const tcUsed = usedChips.includes('3xc');
+  const tcUsage = chipHistory.find((c) => c.name === '3xc');
+  const tcUsed = !!tcUsage;
+  const tcUsedGW = tcUsage?.event || null;
   let tcReason = '';
   let tcPriority: 'high' | 'medium' | 'low' | 'none' = 'none';
   let tcGW: number | null = null;
+  let tcSeasonContext = tcUsed ? '' : `Available for GW${currentGameweek}-38`;
 
   if (!tcUsed) {
     // Find best TC candidate
@@ -166,6 +217,9 @@ export function analyzeChipStrategy(
         tcPriority = 'medium';
         tcGW = gameweek;
         tcReason = `${player.web_name} in GW${gameweek} could be a good option.`;
+      } else if (isSecondHalf && gameweeksRemaining <= 8) {
+        tcPriority = 'medium';
+        tcReason = `${gameweeksRemaining} GWs remaining. Look for DGW to maximize value.`;
       } else {
         tcReason = 'No standout TC opportunity. Wait for better fixtures or double gameweek.';
         tcPriority = 'low';
@@ -175,16 +229,18 @@ export function analyzeChipStrategy(
       tcPriority = 'low';
     }
   } else {
-    tcReason = 'Triple Captain already used this season.';
+    tcReason = `Triple Captain already used in GW${tcUsedGW}.`;
   }
 
   recommendations.push({
     chip: 'triplecaptain',
     available: !tcUsed,
     alreadyUsed: tcUsed,
+    usedInGameweek: tcUsedGW,
     recommendedGameweek: tcGW,
     reason: tcReason,
     priority: tcPriority,
+    seasonContext: tcSeasonContext,
   });
 
   return recommendations;
