@@ -11,6 +11,8 @@ import { FixtureAnalysis } from '@/components/FixtureAnalysis';
 import { TransferSuggestions } from '@/components/TransferSuggestions';
 import { ChipStrategy } from '@/components/ChipStrategy';
 import { DifferentialsAnalysis } from '@/components/DifferentialsAnalysis';
+import { CaptaincyAnalysis } from '@/components/CaptaincyAnalysis';
+import { PlayerDatabase } from '@/components/PlayerDatabase';
 import {
   BootstrapData,
   EntryInfo,
@@ -21,13 +23,15 @@ import {
   AnalysisResult,
   TransferSuggestion,
   ChipRecommendation,
+  CaptaincyAnalysis as CaptaincyAnalysisType,
 } from '@/lib/types';
-import { getCurrentGameweek, getSquadPlayers, enrichPlayerData } from '@/lib/fpl-api';
+import { getCurrentGameweek, getPicksGameweek, getSquadPlayers, enrichPlayerData } from '@/lib/fpl-api';
 import { analyzeTeam } from '@/lib/analysis';
 import { identifyTransferTargets } from '@/lib/transfers';
 import { analyzeChipStrategy } from '@/lib/chips';
+import { analyzeCaptaincy } from '@/lib/captaincy';
 
-type TabType = 'overview' | 'squad' | 'fixtures' | 'transfers' | 'differentials' | 'chips';
+type TabType = 'overview' | 'squad' | 'captaincy' | 'fixtures' | 'transfers' | 'differentials' | 'chips' | 'players';
 
 export default function AnalysisPage() {
   const params = useParams();
@@ -51,6 +55,9 @@ export default function AnalysisPage() {
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [transferSuggestions, setTransferSuggestions] = useState<TransferSuggestion[]>([]);
   const [chipRecommendations, setChipRecommendations] = useState<ChipRecommendation[]>([]);
+  const [captaincyAnalysis, setCaptaincyAnalysis] = useState<CaptaincyAnalysisType | null>(null);
+  const [currentCaptain, setCurrentCaptain] = useState<number | undefined>();
+  const [currentViceCaptain, setCurrentViceCaptain] = useState<number | undefined>();
   const [currentGameweek, setCurrentGameweek] = useState<number>(1);
 
   useEffect(() => {
@@ -76,23 +83,39 @@ export default function AnalysisPage() {
           return;
         }
 
+        if (!bootstrapRes.ok || !fixturesRes.ok) {
+          setError('Failed to load FPL data. Please try again.');
+          setIsLoading(false);
+          return;
+        }
+
         const bootstrapData: BootstrapData = await bootstrapRes.json();
         const fixturesData: Fixture[] = await fixturesRes.json();
         const teamData = await teamRes.json();
+
+        console.log('Bootstrap events:', bootstrapData.events?.length);
+        console.log('Fixtures:', fixturesData?.length);
+        console.log('Team entry:', teamData.entry?.id);
 
         setBootstrap(bootstrapData);
         setFixtures(fixturesData);
         setEntry(teamData.entry);
         setHistory(teamData.history);
 
-        // Get current gameweek
+        // Get current gameweek (for display and planning)
         const currentGW = getCurrentGameweek(bootstrapData.events);
         const gwId = currentGW?.id || 1;
         setCurrentGameweek(gwId);
 
-        // Fetch picks for current gameweek
-        const picksRes = await fetch(`/api/team/${teamId}?gw=${gwId}`);
+        // Get picks gameweek (last available picks - may differ from planning GW)
+        const picksGW = getPicksGameweek(bootstrapData.events);
+        const picksGwId = picksGW?.id || 1;
+
+        // Fetch picks for the picks gameweek
+        console.log('Fetching picks for GW:', picksGwId);
+        const picksRes = await fetch(`/api/team/${teamId}?gw=${picksGwId}`);
         const picksData = await picksRes.json();
+        console.log('Picks data:', picksData.picks ? 'exists' : 'null', picksData.picks?.picks?.length);
 
         if (picksData.picks) {
           setPicks(picksData.picks);
@@ -146,6 +169,19 @@ export default function AnalysisPage() {
             gwId
           );
           setChipRecommendations(chips);
+
+          // Analyze captaincy
+          const captaincy = analyzeCaptaincy(starting);
+          setCaptaincyAnalysis(captaincy);
+
+          // Get current captain/VC from picks
+          const captain = picksData.picks.picks.find((p: { is_captain: boolean }) => p.is_captain);
+          const viceCaptain = picksData.picks.picks.find((p: { is_vice_captain: boolean }) => p.is_vice_captain);
+          setCurrentCaptain(captain?.element);
+          setCurrentViceCaptain(viceCaptain?.element);
+        } else {
+          console.error('No picks data available for GW', picksGwId);
+          setError(`No picks data available for gameweek ${picksGwId}. Please try again later.`);
         }
 
         setIsLoading(false);
@@ -192,9 +228,11 @@ export default function AnalysisPage() {
   const tabs: { id: TabType; label: string }[] = [
     { id: 'overview', label: 'Overview' },
     { id: 'squad', label: 'Squad' },
+    { id: 'captaincy', label: 'Captaincy' },
     { id: 'fixtures', label: 'Fixtures' },
     { id: 'transfers', label: 'Transfers' },
     { id: 'differentials', label: 'Differentials' },
+    { id: 'players', label: 'Players' },
     { id: 'chips', label: 'Chips' },
   ];
 
@@ -259,6 +297,14 @@ export default function AnalysisPage() {
             <SquadAnalysis starting={startingPlayers} bench={benchPlayers} />
           )}
 
+          {activeTab === 'captaincy' && captaincyAnalysis && (
+            <CaptaincyAnalysis
+              analysis={captaincyAnalysis}
+              currentCaptain={currentCaptain}
+              currentViceCaptain={currentViceCaptain}
+            />
+          )}
+
           {activeTab === 'fixtures' && (
             <FixtureAnalysis
               players={startingPlayers}
@@ -282,6 +328,15 @@ export default function AnalysisPage() {
               fixtures={fixtures}
               currentGameweek={currentGameweek}
               bank={picks?.entry_history.bank || 0}
+            />
+          )}
+
+          {activeTab === 'players' && bootstrap && (
+            <PlayerDatabase
+              players={bootstrap.elements}
+              teams={bootstrap.teams}
+              fixtures={fixtures}
+              currentGameweek={currentGameweek}
             />
           )}
 

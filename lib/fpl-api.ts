@@ -67,7 +67,37 @@ export async function getFixtures(): Promise<Fixture[]> {
 }
 
 export function getCurrentGameweek(events: Gameweek[]): Gameweek | undefined {
-  return events.find((e) => e.is_current) || events.find((e) => e.is_next);
+  // Prefer is_next for forward-looking analysis (planning for upcoming GW)
+  // Fall back to is_current if is_next is not set (mid-gameweek)
+  const nextGW = events.find((e) => e.is_next);
+  if (nextGW) return nextGW;
+
+  const currentGW = events.find((e) => e.is_current);
+  if (currentGW) return currentGW;
+
+  // If neither is set, find the first unfinished gameweek
+  const unfinished = events.find((e) => !e.finished);
+  if (unfinished) return unfinished;
+
+  // Last resort: return the last gameweek
+  return events[events.length - 1];
+}
+
+/**
+ * Get the gameweek to fetch picks from (last finished or current in-progress)
+ * This is different from getCurrentGameweek which returns the NEXT gameweek for planning
+ */
+export function getPicksGameweek(events: Gameweek[]): Gameweek | undefined {
+  // If there's a current gameweek (in progress), use that
+  const currentGW = events.find((e) => e.is_current);
+  if (currentGW) return currentGW;
+
+  // Otherwise use the most recent finished gameweek
+  const finishedGWs = events.filter((e) => e.finished).sort((a, b) => b.id - a.id);
+  if (finishedGWs.length > 0) return finishedGWs[0];
+
+  // Fallback to first gameweek
+  return events[0];
 }
 
 export function getNextGameweeks(events: Gameweek[], count: number): Gameweek[] {

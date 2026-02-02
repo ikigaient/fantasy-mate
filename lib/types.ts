@@ -265,3 +265,30 @@ export const POSITION_NAMES: Record<number, string> = {
   3: 'Midfielder',
   4: 'Forward',
 };
+
+export interface CaptainCandidate {
+  player: PlayerWithDetails;
+  captainScore: number;
+  reasons: string[];
+  ownership: number;
+  expectedPoints: number;
+  isDifferential: boolean;
+  fixtureInfo: {
+    opponent: string;
+    isHome: boolean;
+    difficulty: number;
+  };
+  stats: {
+    form: number;
+    xGI: number;
+    ict: number;
+    ppg: number;
+  };
+}
+
+export interface CaptaincyAnalysis {
+  topPick: CaptainCandidate;
+  safePick: CaptainCandidate;
+  differentialPick: CaptainCandidate | null;
+  allCandidates: CaptainCandidate[];
+}
