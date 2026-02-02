@@ -1,10 +1,20 @@
 import { PlayerWithDetails, CaptainCandidate, CaptaincyAnalysis } from './types';
+import { RiskLevel } from './risk-context';
+
+export interface CaptaincyByRisk {
+  safe: CaptaincyAnalysis;
+  balanced: CaptaincyAnalysis;
+  aggressive: CaptaincyAnalysis;
+}
 
 /**
- * Calculate captain score for a player
+ * Calculate captain score for a player based on risk level
  * Higher score = better captain pick
  */
-function calculateCaptainScore(player: PlayerWithDetails): {
+function calculateCaptainScore(
+  player: PlayerWithDetails,
+  riskLevel: RiskLevel = 'balanced'
+): {
   score: number;
   reasons: string[];
 } {
@@ -15,9 +25,19 @@ function calculateCaptainScore(player: PlayerWithDetails): {
   const ppg = parseFloat(player.points_per_game) || 0;
   const xGI = parseFloat(player.expected_goal_involvements) || 0;
   const ict = parseFloat(player.ict_index) || 0;
+  const ownership = parseFloat(player.selected_by_percent) || 0;
 
-  // Form weight (40% of score) - max 40 points
-  const formScore = Math.min(form * 4, 40);
+  // Risk-adjusted weights
+  const weights = {
+    safe: { form: 3, ppg: 3, xGI: 1.5, ict: 0.05, ownership: 0.3 },
+    balanced: { form: 4, ppg: 2.5, xGI: 2, ict: 0.1, ownership: 0 },
+    aggressive: { form: 3, ppg: 1.5, xGI: 3, ict: 0.15, ownership: -0.2 },
+  };
+
+  const w = weights[riskLevel];
+
+  // Form weight
+  const formScore = Math.min(form * w.form, 40);
   score += formScore;
   if (form >= 7) {
     reasons.push('Exceptional form');
@@ -25,25 +45,34 @@ function calculateCaptainScore(player: PlayerWithDetails): {
     reasons.push('Strong form');
   }
 
-  // Points per game (20% of score) - max 20 points
-  const ppgScore = Math.min(ppg * 2.5, 20);
+  // Points per game
+  const ppgScore = Math.min(ppg * w.ppg, 20);
   score += ppgScore;
   if (ppg >= 6) {
     reasons.push('High PPG');
   }
 
-  // Expected goal involvement (20% of score) - max 20 points
-  const xGIScore = Math.min(xGI * 2, 20);
+  // Expected goal involvement
+  const xGIScore = Math.min(xGI * w.xGI, 25);
   score += xGIScore;
   if (xGI >= 6) {
     reasons.push('High xGI');
   }
 
-  // ICT index (10% of score) - max 10 points
-  const ictScore = Math.min(ict / 10, 10);
+  // ICT index
+  const ictScore = Math.min(ict * w.ict, 10);
   score += ictScore;
 
-  // Fixture difficulty bonus (10% of score) - max 10 points
+  // Ownership adjustment (safe favors high ownership, aggressive favors low)
+  score += ownership * w.ownership;
+  if (riskLevel === 'safe' && ownership >= 30) {
+    reasons.push('Highly owned (safe)');
+  } else if (riskLevel === 'aggressive' && ownership < 10) {
+    reasons.push('Low ownership differential');
+    score += 10; // Bonus for aggressive differential picks
+  }
+
+  // Fixture difficulty bonus
   const nextFixture = player.upcomingFixtures[0];
   if (nextFixture) {
     const fixtureBonus = (5 - nextFixture.difficulty) * 2.5;
@@ -64,11 +93,9 @@ function calculateCaptainScore(player: PlayerWithDetails): {
 
   // Position bonus - attackers score more points per involvement
   if (player.element_type === 4) {
-    // Forward
-    score += 5;
+    score += riskLevel === 'aggressive' ? 7 : 5;
     reasons.push('Forward (high ceiling)');
   } else if (player.element_type === 3) {
-    // Midfielder
     score += 3;
   }
 
@@ -88,7 +115,7 @@ function calculateCaptainScore(player: PlayerWithDetails): {
 
   // Minutes played consideration
   if (player.minutes < 270) {
-    score -= 10;
+    score -= riskLevel === 'safe' ? 15 : 10;
     reasons.push('Limited minutes');
   }
 
@@ -122,16 +149,17 @@ function calculateExpectedPoints(player: PlayerWithDetails): number {
 }
 
 /**
- * Analyze squad for captaincy picks
+ * Analyze squad for captaincy picks with specific risk level
  */
 export function analyzeCaptaincy(
-  startingPlayers: PlayerWithDetails[]
+  startingPlayers: PlayerWithDetails[],
+  riskLevel: RiskLevel = 'balanced'
 ): CaptaincyAnalysis {
   // Calculate scores for all eligible players
   const candidates: CaptainCandidate[] = startingPlayers
     .filter((p) => p.status === 'a' || p.chance_of_playing_next_round === null || p.chance_of_playing_next_round >= 75)
     .map((player) => {
-      const { score, reasons } = calculateCaptainScore(player);
+      const { score, reasons } = calculateCaptainScore(player, riskLevel);
       const ownership = parseFloat(player.selected_by_percent) || 0;
       const nextFixture = player.upcomingFixtures[0];
 
@@ -177,6 +205,20 @@ export function analyzeCaptaincy(
     safePick,
     differentialPick,
     allCandidates: candidates,
+  };
+}
+
+/**
+ * Analyze squad for captaincy picks across all risk levels
+ * Pre-computes all 3 variants for instant switching in UI
+ */
+export function analyzeCaptaincyByRisk(
+  startingPlayers: PlayerWithDetails[]
+): CaptaincyByRisk {
+  return {
+    safe: analyzeCaptaincy(startingPlayers, 'safe'),
+    balanced: analyzeCaptaincy(startingPlayers, 'balanced'),
+    aggressive: analyzeCaptaincy(startingPlayers, 'aggressive'),
   };
 }
 

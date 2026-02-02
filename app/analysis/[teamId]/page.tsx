@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { LoadingPage } from '@/components/ui/Loading';
+import { PaywallOverlay } from '@/components/ui/PaywallOverlay';
 import { TeamOverview } from '@/components/TeamOverview';
 import { SquadAnalysis } from '@/components/SquadAnalysis';
 import { StrengthsWeaknesses } from '@/components/StrengthsWeaknesses';
@@ -13,6 +14,9 @@ import { ChipStrategy } from '@/components/ChipStrategy';
 import { DifferentialsAnalysis } from '@/components/DifferentialsAnalysis';
 import { CaptaincyAnalysis } from '@/components/CaptaincyAnalysis';
 import { PlayerDatabase } from '@/components/PlayerDatabase';
+import { TeamStats } from '@/components/TeamStats';
+import { usePremium, isTabPremium } from '@/lib/premium-context';
+import { useRisk } from '@/lib/risk-context';
 import {
   BootstrapData,
   EntryInfo,
@@ -21,17 +25,15 @@ import {
   Fixture,
   PlayerWithDetails,
   AnalysisResult,
-  TransferSuggestion,
   ChipRecommendation,
-  CaptaincyAnalysis as CaptaincyAnalysisType,
 } from '@/lib/types';
 import { getCurrentGameweek, getPicksGameweek, getSquadPlayers, enrichPlayerData } from '@/lib/fpl-api';
 import { analyzeTeam } from '@/lib/analysis';
-import { identifyTransferTargets } from '@/lib/transfers';
+import { identifyTransferTargetsByRisk, TransfersByRisk } from '@/lib/transfers';
 import { analyzeChipStrategy } from '@/lib/chips';
-import { analyzeCaptaincy } from '@/lib/captaincy';
+import { analyzeCaptaincyByRisk, CaptaincyByRisk } from '@/lib/captaincy';
 
-type TabType = 'overview' | 'squad' | 'captaincy' | 'fixtures' | 'transfers' | 'differentials' | 'chips' | 'players';
+type TabType = 'overview' | 'squad' | 'captaincy' | 'fixtures' | 'transfers' | 'differentials' | 'chips' | 'players' | 'season';
 
 export default function AnalysisPage() {
   const params = useParams();
@@ -41,6 +43,8 @@ export default function AnalysisPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('overview');
+  const { isPremium } = usePremium();
+  const { riskLevel } = useRisk();
 
   // Data state
   const [entry, setEntry] = useState<EntryInfo | null>(null);
@@ -53,9 +57,9 @@ export default function AnalysisPage() {
   const [startingPlayers, setStartingPlayers] = useState<PlayerWithDetails[]>([]);
   const [benchPlayers, setBenchPlayers] = useState<PlayerWithDetails[]>([]);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
-  const [transferSuggestions, setTransferSuggestions] = useState<TransferSuggestion[]>([]);
+  const [transfersByRisk, setTransfersByRisk] = useState<TransfersByRisk | null>(null);
   const [chipRecommendations, setChipRecommendations] = useState<ChipRecommendation[]>([]);
-  const [captaincyAnalysis, setCaptaincyAnalysis] = useState<CaptaincyAnalysisType | null>(null);
+  const [captaincyByRisk, setCaptaincyByRisk] = useState<CaptaincyByRisk | null>(null);
   const [currentCaptain, setCurrentCaptain] = useState<number | undefined>();
   const [currentViceCaptain, setCurrentViceCaptain] = useState<number | undefined>();
   const [currentGameweek, setCurrentGameweek] = useState<number>(1);
@@ -141,8 +145,8 @@ export default function AnalysisPage() {
           );
           setAnalysis(analysisResult);
 
-          // Generate transfer suggestions
-          const transfers = identifyTransferTargets(
+          // Generate transfer suggestions for all risk levels
+          const transfers = identifyTransferTargetsByRisk(
             starting,
             bench,
             bootstrapData.elements,
@@ -156,7 +160,7 @@ export default function AnalysisPage() {
                 : 1
               : 1
           );
-          setTransferSuggestions(transfers);
+          setTransfersByRisk(transfers);
 
           // Analyze chip strategy
           const chips = analyzeChipStrategy(
@@ -170,9 +174,9 @@ export default function AnalysisPage() {
           );
           setChipRecommendations(chips);
 
-          // Analyze captaincy
-          const captaincy = analyzeCaptaincy(starting);
-          setCaptaincyAnalysis(captaincy);
+          // Analyze captaincy for all risk levels
+          const captaincy = analyzeCaptaincyByRisk(starting);
+          setCaptaincyByRisk(captaincy);
 
           // Get current captain/VC from picks
           const captain = picksData.picks.picks.find((p: { is_captain: boolean }) => p.is_captain);
@@ -234,6 +238,7 @@ export default function AnalysisPage() {
     { id: 'differentials', label: 'Differentials' },
     { id: 'players', label: 'Players' },
     { id: 'chips', label: 'Chips' },
+    { id: 'season', label: 'Season Review' },
   ];
 
   return (
@@ -265,23 +270,43 @@ export default function AnalysisPage() {
           entry={entry}
           analysis={analysis}
           currentGameweek={currentGameweek}
+          startingPlayers={startingPlayers}
         />
 
         {/* Tabs */}
         <div className="flex gap-2 mb-6 overflow-x-auto no-scrollbar">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`px-4 py-2 rounded-lg font-medium text-sm whitespace-nowrap transition-colors ${
-                activeTab === tab.id
-                  ? 'bg-fpl-green text-fpl-purple'
-                  : 'bg-gray-800 text-gray-400 hover:text-white'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+          {tabs.map((tab) => {
+            const tabIsPremium = isTabPremium(tab.id);
+            const showLock = tabIsPremium && !isPremium;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`px-4 py-2 rounded-lg font-medium text-sm whitespace-nowrap transition-colors flex items-center gap-1.5 ${
+                  activeTab === tab.id
+                    ? 'bg-fpl-green text-fpl-purple'
+                    : 'bg-gray-800 text-gray-400 hover:text-white'
+                }`}
+              >
+                {tab.label}
+                {showLock && (
+                  <svg
+                    className="w-3.5 h-3.5 opacity-60"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                    />
+                  </svg>
+                )}
+              </button>
+            );
+          })}
         </div>
 
         {/* Tab Content */}
@@ -294,54 +319,153 @@ export default function AnalysisPage() {
           )}
 
           {activeTab === 'squad' && (
-            <SquadAnalysis starting={startingPlayers} bench={benchPlayers} />
+            isPremium ? (
+              <SquadAnalysis starting={startingPlayers} bench={benchPlayers} />
+            ) : (
+              <PaywallOverlay featureName="Squad Analysis">
+                <SquadAnalysis starting={startingPlayers} bench={benchPlayers} />
+              </PaywallOverlay>
+            )
           )}
 
-          {activeTab === 'captaincy' && captaincyAnalysis && (
-            <CaptaincyAnalysis
-              analysis={captaincyAnalysis}
-              currentCaptain={currentCaptain}
-              currentViceCaptain={currentViceCaptain}
-            />
+          {activeTab === 'captaincy' && captaincyByRisk && (
+            isPremium ? (
+              <CaptaincyAnalysis
+                analysisByRisk={captaincyByRisk}
+                currentCaptain={currentCaptain}
+                currentViceCaptain={currentViceCaptain}
+              />
+            ) : (
+              <PaywallOverlay featureName="Captaincy Analysis">
+                <CaptaincyAnalysis
+                  analysisByRisk={captaincyByRisk}
+                  currentCaptain={currentCaptain}
+                  currentViceCaptain={currentViceCaptain}
+                />
+              </PaywallOverlay>
+            )
           )}
 
           {activeTab === 'fixtures' && (
-            <FixtureAnalysis
-              players={startingPlayers}
-              gameweeks={bootstrap.events}
-              currentGameweek={currentGameweek}
-              fixtures={fixtures}
-              teams={bootstrap.teams}
-            />
+            isPremium ? (
+              <FixtureAnalysis
+                players={startingPlayers}
+                gameweeks={bootstrap.events}
+                currentGameweek={currentGameweek}
+                fixtures={fixtures}
+                teams={bootstrap.teams}
+              />
+            ) : (
+              <PaywallOverlay featureName="Fixture Analysis">
+                <FixtureAnalysis
+                  players={startingPlayers}
+                  gameweeks={bootstrap.events}
+                  currentGameweek={currentGameweek}
+                  fixtures={fixtures}
+                  teams={bootstrap.teams}
+                />
+              </PaywallOverlay>
+            )
           )}
 
-          {activeTab === 'transfers' && (
-            <TransferSuggestions suggestions={transferSuggestions} />
+          {activeTab === 'transfers' && transfersByRisk && (
+            isPremium ? (
+              <TransferSuggestions suggestionsByRisk={transfersByRisk} />
+            ) : (
+              <PaywallOverlay featureName="Transfer Suggestions">
+                <TransferSuggestions suggestionsByRisk={transfersByRisk} />
+              </PaywallOverlay>
+            )
           )}
 
           {activeTab === 'differentials' && (
-            <DifferentialsAnalysis
-              starting={startingPlayers}
-              bench={benchPlayers}
-              allPlayers={bootstrap.elements}
-              teams={bootstrap.teams}
-              fixtures={fixtures}
-              currentGameweek={currentGameweek}
-              bank={picks?.entry_history.bank || 0}
-            />
+            isPremium ? (
+              <DifferentialsAnalysis
+                starting={startingPlayers}
+                bench={benchPlayers}
+                allPlayers={bootstrap.elements}
+                teams={bootstrap.teams}
+                fixtures={fixtures}
+                currentGameweek={currentGameweek}
+                bank={picks?.entry_history.bank || 0}
+              />
+            ) : (
+              <PaywallOverlay featureName="Differentials Analysis">
+                <DifferentialsAnalysis
+                  starting={startingPlayers}
+                  bench={benchPlayers}
+                  allPlayers={bootstrap.elements}
+                  teams={bootstrap.teams}
+                  fixtures={fixtures}
+                  currentGameweek={currentGameweek}
+                  bank={picks?.entry_history.bank || 0}
+                />
+              </PaywallOverlay>
+            )
           )}
 
           {activeTab === 'players' && bootstrap && (
-            <PlayerDatabase
-              players={bootstrap.elements}
-              teams={bootstrap.teams}
-              fixtures={fixtures}
-              currentGameweek={currentGameweek}
-            />
+            isPremium ? (
+              <PlayerDatabase
+                players={bootstrap.elements}
+                teams={bootstrap.teams}
+                fixtures={fixtures}
+                currentGameweek={currentGameweek}
+              />
+            ) : (
+              <PaywallOverlay featureName="Player Database">
+                <PlayerDatabase
+                  players={bootstrap.elements}
+                  teams={bootstrap.teams}
+                  fixtures={fixtures}
+                  currentGameweek={currentGameweek}
+                />
+              </PaywallOverlay>
+            )
           )}
 
           {activeTab === 'chips' && (
-            <ChipStrategy recommendations={chipRecommendations} />
+            isPremium ? (
+              <ChipStrategy
+                recommendations={chipRecommendations}
+                allPlayers={bootstrap.elements}
+                teams={bootstrap.teams}
+                fixtures={fixtures}
+                currentGameweek={currentGameweek}
+              />
+            ) : (
+              <PaywallOverlay featureName="Chip Strategy">
+                <ChipStrategy
+                  recommendations={chipRecommendations}
+                  allPlayers={bootstrap.elements}
+                  teams={bootstrap.teams}
+                  fixtures={fixtures}
+                  currentGameweek={currentGameweek}
+                />
+              </PaywallOverlay>
+            )
+          )}
+
+          {activeTab === 'season' && history && (
+            isPremium ? (
+              <TeamStats
+                entry={entry}
+                history={history}
+                bootstrap={bootstrap}
+                startingPlayers={startingPlayers}
+                benchPlayers={benchPlayers}
+              />
+            ) : (
+              <PaywallOverlay featureName="Season Review">
+                <TeamStats
+                  entry={entry}
+                  history={history}
+                  bootstrap={bootstrap}
+                  startingPlayers={startingPlayers}
+                  benchPlayers={benchPlayers}
+                />
+              </PaywallOverlay>
+            )
           )}
         </div>
       </main>

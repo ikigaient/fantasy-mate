@@ -1,22 +1,45 @@
 import { Card, CardHeader, CardTitle, CardContent } from './ui/Card';
 import { Badge } from './ui/Badge';
+import { RiskSelector } from './ui/RiskSelector';
 import { TransferSuggestion, TransferCategory } from '@/lib/types';
 import { formatPrice, getDifficultyColor } from '@/lib/fpl-api';
-import { getCategoryBadgeColor, getCategoryLabel } from '@/lib/transfers';
+import { getCategoryBadgeColor, getCategoryLabel, TransfersByRisk } from '@/lib/transfers';
+import { useRisk } from '@/lib/risk-context';
 
 interface TransferSuggestionsProps {
-  suggestions: TransferSuggestion[];
+  suggestionsByRisk: TransfersByRisk;
 }
 
-export function TransferSuggestions({ suggestions }: TransferSuggestionsProps) {
+export function TransferSuggestions({ suggestionsByRisk }: TransferSuggestionsProps) {
+  const { riskLevel } = useRisk();
+  const suggestions = suggestionsByRisk[riskLevel];
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Transfer Recommendations</CardTitle>
-        <p className="text-sm text-gray-400 mt-1">
-          Each gameweek focuses on a different strategy for varied suggestions
-        </p>
-      </CardHeader>
+    <div className="space-y-6">
+      {/* Risk Selector */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-white">Transfer Recommendations</h2>
+          <p className="text-sm text-gray-400">
+            Adjust risk to see different transfer strategies
+          </p>
+        </div>
+        <RiskSelector />
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            {riskLevel === 'safe' ? 'Safe & Proven Picks' :
+             riskLevel === 'aggressive' ? 'High-Ceiling Differentials' :
+             'Balanced Transfers'}
+          </CardTitle>
+          <p className="text-sm text-gray-400 mt-1">
+            {riskLevel === 'safe' ? 'Template players with consistent returns' :
+             riskLevel === 'aggressive' ? 'Low-ownership punts with upside' :
+             'Mix of form, fixtures, and differentials'}
+          </p>
+        </CardHeader>
       <CardContent>
         <div className="space-y-6">
           {suggestions.map((suggestion, idx) => (
@@ -24,7 +47,8 @@ export function TransferSuggestions({ suggestions }: TransferSuggestionsProps) {
           ))}
         </div>
       </CardContent>
-    </Card>
+      </Card>
+    </div>
   );
 }
 

@@ -1,6 +1,6 @@
 import { Card, CardContent } from './ui/Card';
 import { ProgressBar } from './ui/ProgressBar';
-import { AnalysisResult, EntryInfo } from '@/lib/types';
+import { AnalysisResult, EntryInfo, PlayerWithDetails } from '@/lib/types';
 import { getRatingGrade, getRatingColor, getFDRColor, getFDRBgColor } from '@/lib/analysis';
 import { formatPrice } from '@/lib/fpl-api';
 
@@ -8,13 +8,19 @@ interface TeamOverviewProps {
   entry: EntryInfo;
   analysis: AnalysisResult;
   currentGameweek: number;
+  startingPlayers?: PlayerWithDetails[];
 }
 
 export function TeamOverview({
   entry,
   analysis,
   currentGameweek,
+  startingPlayers = [],
 }: TeamOverviewProps) {
+  // Calculate average ownership
+  const avgOwnership = startingPlayers.length > 0
+    ? startingPlayers.reduce((sum, p) => sum + parseFloat(p.selected_by_percent), 0) / startingPlayers.length
+    : 0;
   const ratingColor = getRatingColor(analysis.overallRating);
   const grade = getRatingGrade(analysis.overallRating);
 
@@ -54,7 +60,7 @@ export function TeamOverview({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-6 pt-4 border-t border-gray-700">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mt-6 pt-4 border-t border-gray-700">
           <StatBox
             label="Squad Value"
             value={formatPrice(analysis.squadValue)}
@@ -66,6 +72,7 @@ export function TeamOverview({
           />
           <StatBox label="Avg Form" value={analysis.averageForm.toFixed(1)} />
           <FDRStatBox fdr={analysis.averageFDR} />
+          <OwnershipStatBox ownership={avgOwnership} />
         </div>
       </CardContent>
     </Card>
@@ -91,6 +98,30 @@ function FDRStatBox({ fdr }: { fdr: number }) {
       <div className={`text-lg font-semibold ${colorClass}`}>{fdr.toFixed(2)}</div>
       <div className="text-xs text-gray-400">Avg FDR (3GW)</div>
       <div className={`text-[10px] ${colorClass}`}>{label} run</div>
+    </div>
+  );
+}
+
+function OwnershipStatBox({ ownership }: { ownership: number }) {
+  const isTemplate = ownership > 25;
+  const isDifferential = ownership < 15;
+  const bgClass = isDifferential
+    ? 'bg-purple-900/30'
+    : isTemplate
+    ? 'bg-blue-900/30'
+    : 'bg-gray-900';
+  const colorClass = isDifferential
+    ? 'text-purple-400'
+    : isTemplate
+    ? 'text-blue-400'
+    : 'text-white';
+  const label = isDifferential ? 'Differential' : isTemplate ? 'Template' : 'Balanced';
+
+  return (
+    <div className={`text-center p-3 rounded-lg ${bgClass}`}>
+      <div className={`text-lg font-semibold ${colorClass}`}>{ownership.toFixed(1)}%</div>
+      <div className="text-xs text-gray-400">Avg Ownership</div>
+      <div className={`text-[10px] ${colorClass}`}>{label}</div>
     </div>
   );
 }

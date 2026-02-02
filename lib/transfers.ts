@@ -8,12 +8,20 @@ import {
   Fixture,
 } from './types';
 import { enrichPlayerData } from './fpl-api';
+import { RiskLevel } from './risk-context';
+
+export interface TransfersByRisk {
+  safe: TransferSuggestion[];
+  balanced: TransferSuggestion[];
+  aggressive: TransferSuggestion[];
+}
 
 interface TransferContext {
   gwIndex: number; // 0 = current GW, 1 = next GW, 2 = GW after
   targetGameweek: number;
   category: TransferCategory;
   previousSuggestedOut: Set<number>; // Player IDs already suggested out
+  riskLevel: RiskLevel;
 }
 
 /**
@@ -28,7 +36,8 @@ export function identifyTransferTargets(
   fixtures: Fixture[],
   currentGameweek: number,
   bank: number,
-  freeTransfers: number = 1
+  freeTransfers: number = 1,
+  riskLevel: RiskLevel = 'balanced'
 ): TransferSuggestion[] {
   const suggestions: TransferSuggestion[] = [];
   const squadPlayerIds = new Set([
@@ -39,12 +48,12 @@ export function identifyTransferTargets(
   // Track which players have been suggested out to ensure variety
   const previousSuggestedOut = new Set<number>();
 
-  // Define category focus for each gameweek
-  const gwCategories: TransferCategory[] = [
-    'form_pick', // GW1: Focus on immediate poor performers
-    'fixture_swing', // GW2: Focus on fixture swings
-    'differential', // GW3: Focus on differentials
-  ];
+  // Define category focus for each gameweek based on risk level
+  const gwCategories: TransferCategory[] = riskLevel === 'safe'
+    ? ['form_pick', 'form_pick', 'fixture_swing'] // Safe: focus on proven performers
+    : riskLevel === 'aggressive'
+    ? ['differential', 'differential', 'form_pick'] // Aggressive: focus on differentials
+    : ['form_pick', 'fixture_swing', 'differential']; // Balanced: mix of strategies
 
   for (let gwIndex = 0; gwIndex < 3; gwIndex++) {
     const targetGameweek = currentGameweek + gwIndex;
@@ -55,6 +64,7 @@ export function identifyTransferTargets(
       targetGameweek,
       category,
       previousSuggestedOut,
+      riskLevel,
     };
 
     // Find the best player to transfer out based on category
@@ -217,14 +227,22 @@ function findPlayerOut(
 }
 
 /**
- * Rank replacement options based on category and metrics
+ * Rank replacement options based on category, metrics, and risk level
  */
 function rankReplacements(
   players: PlayerWithDetails[],
   playerOut: PlayerWithDetails,
   context: TransferContext
 ): { player: PlayerWithDetails; score: number; category: TransferCategory }[] {
-  const { category } = context;
+  const { category, riskLevel } = context;
+
+  // Risk-adjusted multipliers
+  const riskMultipliers = {
+    safe: { ownership: 0.3, form: 1.2, differential: 0.5 },
+    balanced: { ownership: 0, form: 1, differential: 1 },
+    aggressive: { ownership: -0.2, form: 0.8, differential: 1.5 },
+  };
+  const rm = riskMultipliers[riskLevel];
 
   return players
     .map((player) => {
@@ -248,20 +266,25 @@ function rankReplacements(
         ? fixtures.reduce((sum, f) => sum + f.difficulty, 0) / fixtures.length
         : 3;
 
+      // Apply risk-based ownership adjustment
+      score += ownership * rm.ownership;
+
       switch (category) {
         case 'form_pick':
           // Weight form and immediate performance heavily
-          score += form * 3;
+          score += form * 3 * rm.form;
           score += ppg * 2;
           score += (parseFloat(player.ep_next || '0')) * 2;
           score += ict / 30;
           score += (5 - avgFixtureDifficulty) * 1.5;
+          // Safe mode bonus for high ownership
+          if (riskLevel === 'safe' && ownership > 20) score += 5;
           break;
 
         case 'fixture_swing':
           // Weight fixture difficulty heavily
           score += (5 - avgFixtureDifficulty) * 5;
-          score += form * 1.5;
+          score += form * 1.5 * rm.form;
           score += ppg * 1;
           // Bonus for home fixtures
           const homeCount = fixtures.filter(f => f.isHome).length;
@@ -269,18 +292,18 @@ function rankReplacements(
           break;
 
         case 'differential':
-          // Heavily weight low ownership
-          if (ownership < 5) score += 30;
-          else if (ownership < 10) score += 20;
-          else if (ownership < 15) score += 10;
-          else if (ownership < 20) score += 5;
+          // Heavily weight low ownership with risk adjustment
+          if (ownership < 5) score += 30 * rm.differential;
+          else if (ownership < 10) score += 20 * rm.differential;
+          else if (ownership < 15) score += 10 * rm.differential;
+          else if (ownership < 20) score += 5 * rm.differential;
 
           // Use advanced metrics
           score += xGI * 10;
           score += ict / 20;
           score += bpsPer90 / 10;
           score += (5 - avgFixtureDifficulty) * 3;
-          score += form * 1.5;
+          score += form * 1.5 * rm.form;
           break;
 
         default:
@@ -523,4 +546,34 @@ export function getCategoryLabel(category: TransferCategory): string {
     default:
       return category;
   }
+}
+
+/**
+ * Generate transfer suggestions for all risk levels
+ * Pre-computes all 3 variants for instant switching in UI
+ */
+export function identifyTransferTargetsByRisk(
+  startingPlayers: PlayerWithDetails[],
+  benchPlayers: PlayerWithDetails[],
+  allPlayers: Player[],
+  teams: Team[],
+  fixtures: Fixture[],
+  currentGameweek: number,
+  bank: number,
+  freeTransfers: number = 1
+): TransfersByRisk {
+  return {
+    safe: identifyTransferTargets(
+      startingPlayers, benchPlayers, allPlayers, teams, fixtures,
+      currentGameweek, bank, freeTransfers, 'safe'
+    ),
+    balanced: identifyTransferTargets(
+      startingPlayers, benchPlayers, allPlayers, teams, fixtures,
+      currentGameweek, bank, freeTransfers, 'balanced'
+    ),
+    aggressive: identifyTransferTargets(
+      startingPlayers, benchPlayers, allPlayers, teams, fixtures,
+      currentGameweek, bank, freeTransfers, 'aggressive'
+    ),
+  };
 }

@@ -1,28 +1,43 @@
 import { Card, CardHeader, CardTitle, CardContent } from './ui/Card';
 import { Badge } from './ui/Badge';
+import { RiskSelector } from './ui/RiskSelector';
 import { CaptaincyAnalysis as CaptaincyAnalysisType, CaptainCandidate } from '@/lib/types';
 import { formatPrice, getDifficultyColor } from '@/lib/fpl-api';
-import { getCaptainScoreColor, getCaptainPickBg } from '@/lib/captaincy';
+import { getCaptainScoreColor, getCaptainPickBg, CaptaincyByRisk } from '@/lib/captaincy';
+import { useRisk } from '@/lib/risk-context';
 
 interface CaptaincyAnalysisProps {
-  analysis: CaptaincyAnalysisType;
+  analysisByRisk: CaptaincyByRisk;
   currentCaptain?: number;
   currentViceCaptain?: number;
 }
 
 export function CaptaincyAnalysis({
-  analysis,
+  analysisByRisk,
   currentCaptain,
   currentViceCaptain,
 }: CaptaincyAnalysisProps) {
+  const { riskLevel } = useRisk();
+  const analysis = analysisByRisk[riskLevel];
   const { topPick, safePick, differentialPick, allCandidates } = analysis;
 
   return (
     <div className="space-y-6">
+      {/* Risk Selector */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-white">Captain Recommendations</h2>
+          <p className="text-sm text-gray-400">
+            Adjust your risk tolerance to see different captain picks
+          </p>
+        </div>
+        <RiskSelector />
+      </div>
+
       {/* Recommended Picks */}
       <Card>
         <CardHeader>
-          <CardTitle>Captain Recommendations</CardTitle>
+          <CardTitle>Top Picks for {riskLevel.charAt(0).toUpperCase() + riskLevel.slice(1)} Strategy</CardTitle>
           <p className="text-sm text-gray-400 mt-1">
             Based on form, fixtures, xG/xA, and team performance
           </p>
