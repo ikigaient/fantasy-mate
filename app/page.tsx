@@ -1,4 +1,5 @@
 import { TeamInput } from '@/components/TeamInput';
+import { UserMenu } from '@/components/UserMenu';
 
 export default function Home() {
   return (
@@ -6,11 +7,14 @@ export default function Home() {
       {/* Header */}
       <header className="border-b border-gray-800">
         <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded bg-gradient-to-br from-fpl-green to-fpl-cyan flex items-center justify-center font-bold text-fpl-purple text-sm">
-              FM
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded bg-gradient-to-br from-fpl-green to-fpl-cyan flex items-center justify-center font-bold text-fpl-purple text-sm">
+                FM
+              </div>
+              <span className="font-semibold text-white">Fantasy Mate</span>
             </div>
-            <span className="font-semibold text-white">Fantasy Mate</span>
+            <UserMenu />
           </div>
         </div>
       </header>
