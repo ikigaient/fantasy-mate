@@ -2,12 +2,15 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@/lib/auth-context';
+import { createClient } from '@/lib/supabase';
 
 export function TeamInput() {
   const [teamId, setTeamId] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+  const { user } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,6 +40,16 @@ export function TeamInput() {
         }
         setIsLoading(false);
         return;
+      }
+
+      // Save team to user_teams if logged in
+      if (user) {
+        const supabase = createClient();
+        await supabase.from('user_teams').insert({
+          user_id: user.id,
+          team_id: id,
+        });
+        // Ignore errors (unique constraint = already saved)
       }
 
       router.push(`/analysis/${id}`);

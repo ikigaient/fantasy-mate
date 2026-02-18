@@ -2,10 +2,12 @@
 
 import { useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
+import { usePremium } from '@/lib/premium-context';
 import { AuthModal } from './AuthModal';
 
 export function UserMenu() {
   const { user, isLoading, signOut } = useAuth();
+  const { isPremium } = usePremium();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
 
@@ -42,6 +44,11 @@ export function UserMenu() {
         <span className="text-sm text-gray-300 hidden sm:inline">
           {user.email}
         </span>
+        {isPremium && (
+          <span className="px-2 py-0.5 text-xs font-semibold bg-gradient-to-r from-fpl-green to-fpl-cyan text-fpl-purple rounded-full">
+            Premium
+          </span>
+        )}
       </button>
 
       {showDropdown && (

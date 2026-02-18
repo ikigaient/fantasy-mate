@@ -1,7 +1,48 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { TeamInput } from '@/components/TeamInput';
 import { UserMenu } from '@/components/UserMenu';
+import { useAuth } from '@/lib/auth-context';
+import { createClient } from '@/lib/supabase';
 
 export default function Home() {
+  const { user, isLoading: authLoading } = useAuth();
+  const router = useRouter();
+  const [checking, setChecking] = useState(true);
+
+  useEffect(() => {
+    if (authLoading) return;
+
+    if (!user) {
+      setChecking(false);
+      return;
+    }
+
+    const supabase = createClient();
+    supabase
+      .from('user_teams')
+      .select('team_id')
+      .eq('user_id', user.id)
+      .single()
+      .then(({ data }) => {
+        if (data?.team_id) {
+          router.replace(`/analysis/${data.team_id}`);
+        } else {
+          setChecking(false);
+        }
+      });
+  }, [user, authLoading, router]);
+
+  if (authLoading || checking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-fpl-green border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
   return (
     <main className="min-h-screen flex flex-col">
       {/* Header */}

@@ -1,42 +1,77 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { useAuth } from './auth-context';
+import { createClient } from './supabase';
 
 interface PremiumContextType {
   isPremium: boolean;
-  setPremium: (value: boolean) => void;
+  refreshPremium: () => Promise<void>;
 }
 
 const PremiumContext = createContext<PremiumContextType | undefined>(undefined);
 
-const PREMIUM_STORAGE_KEY = 'fantasy-mate-premium';
+const CURRENT_SEASON = '2024-25';
 
 export function PremiumProvider({ children }: { children: ReactNode }) {
+  const { user, isLoading: authLoading } = useAuth();
   const [isPremium, setIsPremium] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // Load premium status from localStorage on mount
-  useEffect(() => {
-    const stored = localStorage.getItem(PREMIUM_STORAGE_KEY);
-    if (stored === 'true') {
-      setIsPremium(true);
+  const checkPurchase = useCallback(async () => {
+    if (!user) {
+      setIsPremium(false);
+      setIsLoaded(true);
+      return;
     }
-    setIsLoaded(true);
-  }, []);
 
-  const setPremium = (value: boolean) => {
-    setIsPremium(value);
-    localStorage.setItem(PREMIUM_STORAGE_KEY, value.toString());
-  };
+    const supabase = createClient();
+    const { data } = await supabase
+      .from('purchases')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('season', CURRENT_SEASON)
+      .limit(1)
+      .single();
+
+    setIsPremium(!!data);
+    setIsLoaded(true);
+  }, [user]);
+
+  useEffect(() => {
+    if (!authLoading) {
+      checkPurchase();
+    }
+  }, [authLoading, checkPurchase]);
+
+  // After returning from Stripe checkout, poll briefly for the webhook to process
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('checkout') !== 'success' || !user) return;
+
+    // Clean the URL
+    window.history.replaceState({}, '', window.location.pathname);
+
+    let attempts = 0;
+    const interval = setInterval(async () => {
+      attempts++;
+      await checkPurchase();
+      if (isPremium || attempts >= 10) {
+        clearInterval(interval);
+      }
+    }, 1500);
+
+    return () => clearInterval(interval);
+  }, [user, checkPurchase, isPremium]);
 
   // Don't render children until we've loaded the premium status
-  // This prevents flash of locked content for premium users
   if (!isLoaded) {
     return null;
   }
 
   return (
-    <PremiumContext.Provider value={{ isPremium, setPremium }}>
+    <PremiumContext.Provider value={{ isPremium, refreshPremium: checkPurchase }}>
       {children}
     </PremiumContext.Provider>
   );

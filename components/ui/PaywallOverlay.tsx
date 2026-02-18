@@ -1,6 +1,9 @@
 'use client';
 
+import { useState } from 'react';
 import { usePremium } from '@/lib/premium-context';
+import { useAuth } from '@/lib/auth-context';
+import { AuthModal } from '@/components/AuthModal';
 
 interface PaywallOverlayProps {
   children: React.ReactNode;
@@ -8,7 +11,35 @@ interface PaywallOverlayProps {
 }
 
 export function PaywallOverlay({ children, featureName }: PaywallOverlayProps) {
-  const { setPremium } = usePremium();
+  const { user, session } = useAuth();
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
+
+  const handleBuy = async () => {
+    if (!user || !session) {
+      setShowAuthModal(true);
+      return;
+    }
+
+    setIsCheckingOut(true);
+    try {
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    } catch (err) {
+      console.error('Checkout error:', err);
+    } finally {
+      setIsCheckingOut(false);
+    }
+  };
+
   return (
     <div className="relative">
       {/* Blurred content */}
@@ -70,20 +101,24 @@ export function PaywallOverlay({ children, featureName }: PaywallOverlayProps) {
 
           {/* CTA Button */}
           <button
-            className="w-full px-6 py-3 bg-gradient-to-r from-fpl-green to-fpl-cyan text-fpl-purple font-semibold rounded-lg hover:opacity-90 transition-opacity"
-            onClick={() => {
-              setPremium(true);
-            }}
+            className="w-full px-6 py-3 bg-gradient-to-r from-fpl-green to-fpl-cyan text-fpl-purple font-semibold rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+            onClick={handleBuy}
+            disabled={isCheckingOut}
           >
-            Upgrade to Premium
+            {isCheckingOut ? 'Redirecting...' : 'Buy Season Pass — £5'}
           </button>
 
           {/* Price hint */}
           <p className="mt-3 text-xs text-gray-500">
-            Test mode - click to unlock instantly
+            One-time payment for the full season
           </p>
         </div>
       </div>
+
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+      />
     </div>
   );
 }

@@ -17,6 +17,8 @@ import { PlayerDatabase } from '@/components/PlayerDatabase';
 import { TeamStats } from '@/components/TeamStats';
 import { usePremium, isTabPremium } from '@/lib/premium-context';
 import { useRisk } from '@/lib/risk-context';
+import { useAuth } from '@/lib/auth-context';
+import { createClient } from '@/lib/supabase';
 import {
   BootstrapData,
   EntryInfo,
@@ -45,6 +47,8 @@ export default function AnalysisPage() {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const { isPremium } = usePremium();
   const { riskLevel } = useRisk();
+  const { user } = useAuth();
+  const [hasLockedTeam, setHasLockedTeam] = useState(false);
 
   // Data state
   const [entry, setEntry] = useState<EntryInfo | null>(null);
@@ -63,6 +67,32 @@ export default function AnalysisPage() {
   const [currentCaptain, setCurrentCaptain] = useState<number | undefined>();
   const [currentViceCaptain, setCurrentViceCaptain] = useState<number | undefined>();
   const [currentGameweek, setCurrentGameweek] = useState<number>(1);
+
+  // Enforce team lock for logged-in users
+  useEffect(() => {
+    if (!user) return;
+
+    const supabase = createClient();
+    supabase
+      .from('user_teams')
+      .select('team_id')
+      .eq('user_id', user.id)
+      .single()
+      .then(({ data }) => {
+        if (data?.team_id) {
+          setHasLockedTeam(true);
+          if (data.team_id !== teamId) {
+            router.replace(`/analysis/${data.team_id}`);
+          }
+        } else {
+          // First time analyzing — lock this team
+          supabase.from('user_teams').insert({
+            user_id: user.id,
+            team_id: teamId,
+          }).then(() => setHasLockedTeam(true));
+        }
+      });
+  }, [user, teamId, router]);
 
   useEffect(() => {
     async function fetchData() {
@@ -253,12 +283,14 @@ export default function AnalysisPage() {
               </div>
               <span className="font-semibold text-white">Fantasy Mate</span>
             </Link>
-            <Link
-              href="/"
-              className="text-sm text-gray-400 hover:text-white transition-colors"
-            >
-              Analyze Another Team
-            </Link>
+            {!(user && hasLockedTeam) && (
+              <Link
+                href="/"
+                className="text-sm text-gray-400 hover:text-white transition-colors"
+              >
+                Analyze Another Team
+              </Link>
+            )}
           </div>
         </div>
       </header>
