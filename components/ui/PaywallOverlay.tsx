@@ -14,6 +14,7 @@ export function PaywallOverlay({ children, featureName }: PaywallOverlayProps) {
   const { user, session } = useAuth();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [checkoutError, setCheckoutError] = useState('');
 
   const handleBuy = async () => {
     if (!user || !session) {
@@ -22,6 +23,7 @@ export function PaywallOverlay({ children, featureName }: PaywallOverlayProps) {
     }
 
     setIsCheckingOut(true);
+    setCheckoutError('');
     try {
       const res = await fetch('/api/checkout', {
         method: 'POST',
@@ -32,9 +34,12 @@ export function PaywallOverlay({ children, featureName }: PaywallOverlayProps) {
       const data = await res.json();
       if (data.url) {
         window.location.href = data.url;
+      } else {
+        setCheckoutError(data.error || 'Failed to start checkout');
       }
     } catch (err) {
       console.error('Checkout error:', err);
+      setCheckoutError('Network error. Please try again.');
     } finally {
       setIsCheckingOut(false);
     }
@@ -107,6 +112,11 @@ export function PaywallOverlay({ children, featureName }: PaywallOverlayProps) {
           >
             {isCheckingOut ? 'Redirecting...' : 'Buy Season Pass — £5'}
           </button>
+
+          {/* Error message */}
+          {checkoutError && (
+            <p className="mt-3 text-xs text-red-400">{checkoutError}</p>
+          )}
 
           {/* Price hint */}
           <p className="mt-3 text-xs text-gray-500">
